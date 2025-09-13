@@ -4,7 +4,7 @@ from fido2.utils import websafe_encode, websafe_decode
 import db
 
 # Set this to your domain (no protocol) in production, e.g. 'your-app-name.streamlitapp.com'
-RP_ID = "localhost"
+RP_ID = "project-sman.streamlit.app"
 RP_NAME = "CBT WebAuthn App"
 
 rp = PublicKeyCredentialRpEntity(id=RP_ID, name=RP_NAME)
