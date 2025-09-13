@@ -1,0 +1,12 @@
+{
+  "users": {
+    "admin": {"password": "<hashed_admin_password>", "role": "admin"},
+    "student": {"password": "<hashed_student_password>", "role": "student"}
+  },
+  "questions": [
+    {"id": 1, "question": "2 + 2 = ?", "options": {"A": "3", "B": "4", "C": "5", "D": "6"}, "answer": "B"},
+    {"id": 2, "question": "Capital of France?", "options": {"A": "London", "B": "Berlin", "C": "Paris", "D": "Rome"}, "answer": "C"}
+  ],
+  "results": {},
+  "credentials": {}
+}
