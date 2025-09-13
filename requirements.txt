@@ -1,0 +1,5 @@
+streamlit==1.37.1
+psycopg2-binary
+bcrypt
+fido2==1.1.0
+cryptography
