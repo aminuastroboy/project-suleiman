@@ -7,11 +7,11 @@ def get_conn():
     if not cfg:
         raise RuntimeError('Postgres credentials not found in st.secrets.postgres')
     return psycopg2.connect(
-        host=cfg['host'],
+        host=cfg['db.gwjtetklvkdifymvcida.supabase.co'],
         port=cfg.get('port','5432'),
-        dbname=cfg['dbname'],
-        user=cfg['user'],
-        password=cfg['password']
+        dbname=cfg['postgres'],
+        user=cfg['postgres'],
+        password=cfg['dev_Nine11']
     )
 
 def init_db():
