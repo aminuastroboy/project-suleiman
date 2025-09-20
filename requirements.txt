@@ -1,2 +1,5 @@
-streamlit
-bcrypt
+streamlit>=1.20
+pandas
+Pillow
+opencv-python-headless
+face-recognition

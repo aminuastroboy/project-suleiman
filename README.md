@@ -1,11 +1,25 @@
-# CBT Demo (Streamlit)
+# Project-Sadiq — Deploy-ready Streamlit CBT
 
-## How to run
-1. Install dependencies:
+This repository contains a simple Computer-Based Testing (CBT) Streamlit app with optional biometric features.
+
+## How to run locally
+
+1. Create a Python virtual environment
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+   ```
+2. Install requirements
+   ```bash
    pip install -r requirements.txt
-2. Run the app:
+   ```
+3. Run Streamlit
+   ```bash
    streamlit run app.py
-3. Login with:
-   - Admin: admin / admin
-   - Student: student / student
-4. Optional: register fingerprint login on supported devices.
+   ```
+
+## Biometric note
+The app optionally integrates `face-recognition` (which depends on `dlib`). On many hosts (including Streamlit Cloud) compiling `dlib` may fail. If that happens, biometric login will be disabled and password login remains available.
+
+## Seeded data
+This package includes a seeded sample student and a sample exam so you can test the full flow immediately.
