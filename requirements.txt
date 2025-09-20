@@ -1,4 +1,6 @@
 streamlit
 sqlalchemy
 deepface
-opencv-python-headless
+mediapipe
+Pillow
+numpy

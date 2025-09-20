@@ -32,7 +32,7 @@ def init_db():
         default_admin = Admin(username="admin", password="1234")
         session.add(default_admin)
         session.commit()
-    # Seed dummy students & progress
+    # Seed dummy students & progress (face_embedding stored as empty array string)
     if session.query(User).count() == 0:
         u1 = User(school_id="S1001", face_embedding="[]")
         u2 = User(school_id="S1002", face_embedding="[]")

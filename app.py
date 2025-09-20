@@ -1,30 +1,34 @@
 import streamlit as st
 from db import SessionLocal, User, Progress, Admin, init_db
 from deepface import DeepFace
-import cv2
-import json
-import numpy as np
+from PIL import Image
+import io, json, numpy as np
 
 init_db()
 session = SessionLocal()
 
 st.set_page_config(page_title="🧠 CBT Biometric App", page_icon="🧠", layout="wide")
 
-# Helper to capture image
+# Helper to capture image using Streamlit's camera_input
 def capture_image():
     img_file_buffer = st.camera_input("📷 Take a photo")
     if img_file_buffer is not None:
-        bytes_data = img_file_buffer.getvalue()
-        nparr = np.frombuffer(bytes_data, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        return img
+        # Return a PIL image
+        image = Image.open(img_file_buffer)
+        image = image.convert("RGB")
+        return image
     return None
 
-# Helper to get embedding
-def get_embedding(img):
+# Helper to get embedding using DeepFace with mediapipe backend
+def get_embedding(pil_image):
     try:
-        rep = DeepFace.represent(img, model_name="Facenet", enforce_detection=False)
-        return rep[0]["embedding"]
+        # DeepFace.represent accepts image path or numpy array; convert PIL to numpy
+        img_array = np.asarray(pil_image)
+        rep = DeepFace.represent(img_path = img_array, model_name="Facenet", detector_backend="mediapipe", enforce_detection=False)
+        if isinstance(rep, list) and len(rep) > 0 and "embedding" in rep[0]:
+            return rep[0]["embedding"]
+        st.error("Could not extract embedding from image.")
+        return None
     except Exception as e:
         st.error(f"Embedding error: {e}")
         return None
