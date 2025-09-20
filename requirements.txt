@@ -1,6 +1,4 @@
 streamlit
-sqlalchemy
-deepface
-mediapipe
+face_recognition
 Pillow
 numpy

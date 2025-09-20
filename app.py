@@ -1,137 +1,89 @@
 import streamlit as st
-from db import SessionLocal, User, Progress, Admin, init_db
-from deepface import DeepFace
+import face_recognition
+import numpy as np
 from PIL import Image
-import io, json, numpy as np
+import io
+import pickle
+import os
 
-init_db()
-session = SessionLocal()
+# Database file
+DB_FILE = "students.pkl"
 
-st.set_page_config(page_title="🧠 CBT Biometric App", page_icon="🧠", layout="wide")
+# Load or initialize database
+if os.path.exists(DB_FILE):
+    with open(DB_FILE, "rb") as f:
+        students_db = pickle.load(f)
+else:
+    students_db = {"students": {}, "admin": {"username": "admin", "password": "1234"}}
 
-# Helper to capture image using Streamlit's camera_input
-def capture_image():
-    img_file_buffer = st.camera_input("📷 Take a photo")
-    if img_file_buffer is not None:
-        # Return a PIL image
-        image = Image.open(img_file_buffer)
-        image = image.convert("RGB")
-        return image
-    return None
+# Save database
+def save_db():
+    with open(DB_FILE, "wb") as f:
+        pickle.dump(students_db, f)
 
-# Helper to get embedding using DeepFace with mediapipe backend
-def get_embedding(pil_image):
-    try:
-        # DeepFace.represent accepts image path or numpy array; convert PIL to numpy
-        img_array = np.asarray(pil_image)
-        rep = DeepFace.represent(img_path = img_array, model_name="Facenet", detector_backend="mediapipe", enforce_detection=False)
-        if isinstance(rep, list) and len(rep) > 0 and "embedding" in rep[0]:
-            return rep[0]["embedding"]
-        st.error("Could not extract embedding from image.")
-        return None
-    except Exception as e:
-        st.error(f"Embedding error: {e}")
-        return None
+# Encode face
+def encode_face(image: Image.Image):
+    img = np.array(image)
+    encodings = face_recognition.face_encodings(img)
+    return encodings[0] if encodings else None
 
-# Convert embedding to JSON
-def embedding_to_json(embedding):
-    return json.dumps(embedding)
+# Registration
+def register_student():
+    st.subheader("📸 Register Student")
+    school_id = st.text_input("Enter School ID")
+    name = st.text_input("Enter Full Name")
+    uploaded = st.file_uploader("Upload Face Image", type=["jpg", "png", "jpeg"])
+    if uploaded and school_id and name:
+        img = Image.open(uploaded).convert("RGB")
+        encoding = encode_face(img)
+        if encoding is not None:
+            students_db["students"][school_id] = {"name": name, "encoding": encoding}
+            save_db()
+            st.success(f"✅ {name} ({school_id}) registered successfully!")
+        else:
+            st.error("No face detected. Try another image.")
 
-def json_to_embedding(s):
-    return np.array(json.loads(s))
-
-# Sidebar mode selector
-mode = st.sidebar.radio("Choose Mode", ["Student", "Admin"])
-
-if mode == "Student":
-    st.title("🧠 CBT Webapp (Student Portal)")
-    auth_mode = st.sidebar.radio("🔐 Authentication", ["Register", "Login"])
-    user_session = st.session_state.get("user", None)
-
-    if not user_session:
-        if auth_mode == "Register":
-            st.subheader("📝 Register with Face")
-            school_id = st.text_input("School ID")
-            img = capture_image()
-            if st.button("Register"):
-                if school_id and img is not None:
-                    emb = get_embedding(img)
-                    if emb is not None:
-                        user = User(school_id=school_id, face_embedding=embedding_to_json(emb))
-                        session.add(user)
-                        session.commit()
-                        st.success("✅ Registered successfully! Please login.")
+# Login
+def student_login():
+    st.subheader("🔑 Student Login")
+    school_id = st.text_input("Enter School ID")
+    uploaded = st.file_uploader("Upload Face Image", type=["jpg", "png", "jpeg"])
+    if uploaded and school_id:
+        img = Image.open(uploaded).convert("RGB")
+        encoding = encode_face(img)
+        if encoding is not None:
+            if school_id in students_db["students"]:
+                known_enc = students_db["students"][school_id]["encoding"]
+                match = face_recognition.compare_faces([known_enc], encoding)[0]
+                if match:
+                    st.success(f"🎉 Welcome, {students_db['students'][school_id]['name']}! You are logged in.")
                 else:
-                    st.warning("Provide School ID and face.")
+                    st.error("Face does not match. Access denied.")
+            else:
+                st.error("School ID not found.")
 
-        elif auth_mode == "Login":
-            st.subheader("🔓 Login with Face")
-            school_id = st.text_input("School ID")
-            img = capture_image()
-            if st.button("Login"):
-                if school_id and img is not None:
-                    emb = get_embedding(img)
-                    if emb is not None:
-                        user = session.query(User).filter_by(school_id=school_id).first()
-                        if user:
-                            db_emb = json_to_embedding(user.face_embedding)
-                            dist = np.linalg.norm(np.array(emb) - db_emb)
-                            if dist < 0.7:  # Threshold
-                                st.session_state["user"] = user.school_id
-                                st.success(f"Welcome back, {user.school_id}! 🎉")
-                            else:
-                                st.error("Face does not match this School ID.")
-                        else:
-                            st.error("School ID not found.")
-    else:
-        st.success(f"✅ Logged in as {st.session_state['user']}")
-        menu = ["Home", "Lesson 1", "Progress"]
-        choice = st.sidebar.radio("📚 Menu", menu)
-
-        if choice == "Home":
-            st.write("Welcome to your CBT companion app.")
-        elif choice == "Lesson 1":
-            st.header("Lesson 1: Challenging Negative Thoughts")
-            ans = st.text_area("Write a negative thought and reframe it positively")
-            if st.button("Save Progress"):
-                user = session.query(User).filter_by(school_id=st.session_state["user"]).first()
-                p = Progress(user_id=user.id, lesson="Lesson 1", answer=ans)
-                session.add(p)
-                session.commit()
-                st.success("Progress saved!")
-        elif choice == "Progress":
-            user = session.query(User).filter_by(school_id=st.session_state["user"]).first()
-            rows = session.query(Progress).filter_by(user_id=user.id).all()
-            for r in rows:
-                st.write(f"📘 {r.lesson} → {r.answer}")
-
-elif mode == "Admin":
-    st.title("👨‍🏫 Admin Dashboard Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-
+# Admin
+def admin_panel():
+    st.subheader("🛠️ Admin Panel")
+    username = st.text_input("Admin Username")
+    password = st.text_input("Admin Password", type="password")
     if st.button("Login as Admin"):
-        admin = session.query(Admin).filter_by(username=username, password=password).first()
-        if admin:
-            st.session_state["admin"] = admin.username
-            st.success(f"✅ Logged in as Admin: {admin.username}")
+        if username == students_db["admin"]["username"] and password == students_db["admin"]["password"]:
+            st.success("✅ Admin logged in")
+            st.write("### Registered Students")
+            for sid, data in students_db["students"].items():
+                st.write(f"- {sid}: {data['name']}")
         else:
             st.error("Invalid admin credentials")
 
-    if "admin" in st.session_state:
-        st.subheader("📋 Student Management")
-        students = session.query(User).all()
-        if students:
-            for s in students:
-                st.write(f"🎓 School ID: {s.school_id}")
-                rows = session.query(Progress).filter_by(user_id=s.id).all()
-                for r in rows:
-                    st.write(f"📘 {r.lesson} → {r.answer}")
-                if st.button(f"Delete {s.school_id}"):
-                    session.query(Progress).filter_by(user_id=s.id).delete()
-                    session.delete(s)
-                    session.commit()
-                    st.warning(f"Deleted {s.school_id}")
-                    st.experimental_rerun()
-        else:
-            st.info("No students registered yet.")
+# Main UI
+st.title("📘 Project Suleiman - CBT App v3")
+
+menu = st.sidebar.radio("Navigation", ["Register", "Login", "Admin"])
+
+if menu == "Register":
+    register_student()
+elif menu == "Login":
+    student_login()
+elif menu == "Admin":
+    admin_panel()
