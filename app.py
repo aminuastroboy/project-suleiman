@@ -25,7 +25,7 @@ def save_db():
 def image_to_embedding(pil_image, size=(64,64)):
     # Convert to grayscale, resize, normalize and flatten
     img = pil_image.convert("L")  # grayscale
-    img = ImageOps.fit(img, size, Image.ANTIALIAS)
+    img = ImageOps.fit(img, size, Image.Resampling.LANCZOS)
     arr = np.asarray(img, dtype=np.float32) / 255.0
     emb = arr.flatten()
     # Normalize to unit vector
@@ -41,8 +41,8 @@ def cosine_similarity(a, b):
         return -1.0
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-st.set_page_config(page_title="CBT App v5 (Simple Embeddings)", layout="wide")
-st.title("🧠 Project Suleiman — CBT App v5 (No OpenCV)")
+st.set_page_config(page_title="CBT App v5 (Simple Embeddings, Fixed)", layout="wide")
+st.title("🧠 Project Suleiman — CBT App v5 (No OpenCV, Fixed Pillow)")
 
 mode = st.sidebar.radio("Mode", ["Student", "Admin"])
 

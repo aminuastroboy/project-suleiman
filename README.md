@@ -1,21 +1,14 @@
-# CBT App v5 (No OpenCV, Simple Image Embeddings)
+# CBT App v5 (Fixed Pillow)
 
-This build removes OpenCV and mediapipe entirely. Instead it uses a simple image-based embedding
-(grayscale, resized) as a prototype biometric for demo/testing purposes. This avoids native build
-dependencies and should install cleanly on Streamlit Cloud or local Python without extra system libs.
+This fixes the deprecated Image.ANTIALIAS by using Image.Resampling.LANCZOS.
+No OpenCV or mediapipe required. Pure Python + Streamlit + Pillow + NumPy.
 
 ## Features
-- Student register with School ID + live camera photo (Streamlit camera_input)
-- Student login with School ID + live camera photo (compares simple grayscale embeddings)
-- Lesson 1 and progress saving after login
-- Admin panel (default admin / 1234) to view and delete students
-- Dummy students S1001 and S1002 seeded
+- Student register/login via grayscale embeddings
+- Lesson 1 and progress saving
+- Admin panel (admin / 1234)
+- Dummy students seeded
 
-## Usage
-```bash
+## Run
 pip install -r requirements.txt
 streamlit run app.py
-```
-
-Notes: This simple matcher is only intended for demo/testing. For production biometric authentication,
-use a proper face-recognition model and follow privacy/security best practices.
