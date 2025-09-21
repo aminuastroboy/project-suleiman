@@ -1,4 +1,4 @@
 streamlit
-face_recognition
+mediapipe
 Pillow
 numpy

@@ -1,21 +1,21 @@
-# 🧠 CBT Biometric Webapp (v2)
+# CBT App v4 (Mediapipe)
 
-This patched build uses DeepFace with the mediapipe detector backend (avoids OpenCV),
-so it is more compatible with Streamlit Cloud.
+This build uses Mediapipe FaceMesh to extract face landmarks and create a normalized embedding
+which is stored in a small pickle database. It avoids dlib/opencv and is much more compatible
+with Streamlit Cloud.
 
 ## Features
-- Student registration & login with School ID + Face Recognition (DeepFace + mediapipe)
-- CBT Lesson 1 with progress saving
-- Admin login (default: admin / 1234)
-- Admin can view all students + their progress, and delete users
-- Dummy student data seeded for testing
+- Student register with School ID + live camera photo (Streamlit camera_input)
+- Student login with School ID + live camera photo (compares embeddings with cosine similarity)
+- Lesson 1 and progress saving after login
+- Admin panel (default admin/admin: admin / 1234) to view and delete students
+- Dummy students S1001 and S1002 seeded (without embeddings) and sample progress
 
-## Install & Run (local)
+## Run locally
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Notes for Streamlit Cloud
-- DeepFace and mediapipe are heavy dependencies; Streamlit Cloud may still have resource limits.
-- If you run into memory/timeout issues on Streamlit Cloud, consider running locally or using a VM with more resources.
+Notes: Mediapipe and Streamlit can be heavy; if you deploy to Streamlit Cloud and hit resource limits,
+consider running locally or using a paid VM.
