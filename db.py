@@ -1,4 +1,4 @@
-import sqlite3
+import sqlite3, json
 from pathlib import Path
 DB_PATH = Path(__file__).parent / "cbt_full.db"
 
@@ -10,7 +10,6 @@ def get_conn():
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
-    # users: admin and students (students have role='student')
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,7 +17,8 @@ def init_db():
             name TEXT,
             email TEXT,
             password_hash TEXT,
-            role TEXT -- 'admin' or 'student'
+            role TEXT,
+            face_embedding TEXT
         )
     ''')
     cur.execute('''
@@ -54,38 +54,12 @@ def init_db():
         )
     ''')
     conn.commit()
-    # seed admin if not exists
+    # seed admin
     cur.execute("SELECT COUNT(*) as c FROM users WHERE role='admin'")
     if cur.fetchone()['c'] == 0:
-        # password is '1234' hashed with sha256
         import hashlib
         h = hashlib.sha256('1234'.encode()).hexdigest()
-        cur.execute("INSERT INTO users (reg_no, name, email, password_hash, role) VALUES (?,?,?,?,?)", ('ADMIN001','Administrator','admin@example.com', h, 'admin'))
-        conn.commit()
-    # seed sample students
-    cur.execute("SELECT COUNT(*) as c FROM users WHERE role='student'")
-    if cur.fetchone()['c'] == 0:
-        import hashlib, random
-        sps = [
-            ('S1001','Student One','s1001@example.com','pass1'),
-            ('S1002','Student Two','s1002@example.com','pass2')
-        ]
-        for reg,name,email,pw in sps:
-            h = hashlib.sha256(pw.encode()).hexdigest()
-            cur.execute("INSERT OR IGNORE INTO users (reg_no,name,email,password_hash,role) VALUES (?,?,?,?,?)", (reg,name,email,h,'student'))
-        conn.commit()
-    # seed question bank
-    cur.execute('SELECT COUNT(*) as c FROM questions')
-    if cur.fetchone()['c'] == 0:
-        qs = [
-            ('Math Q1','What is 2+2?','1','2','3','4','D','Math','Easy'),
-            ('Math Q2','What is 5*6?','11','30','20','25','B','Math','Easy'),
-            ('Eng Q1','Choose synonym of happy','sad','joyful','angry','tired','B','English','Easy')
-        ]
-        for q in qs:
-            cur.execute("INSERT INTO questions (title,body,choice_a,choice_b,choice_c,choice_d,correct_choice,subject,difficulty) VALUES (?,?,?,?,?,?,?,?,?)", q)
+        cur.execute("INSERT INTO users (reg_no,name,email,password_hash,role,face_embedding) VALUES (?,?,?,?,?,?)", 
+                    ('ADMIN001','Administrator','admin@example.com',h,'admin',None))
         conn.commit()
     conn.close()
-
-if __name__ == '__main__':
-    init_db()

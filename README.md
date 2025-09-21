@@ -1,12 +1,9 @@
-CBT Full Project - Project Suleiman
+CBT Hybrid Biometric Project
 Features:
-1. Admin Login
-2. Admin Dashboard
-3. Student Registration Form
-4. Question Bank
-5. Student Login
-6. Student Dashboard
-7. Questions Interface (Exam)
+- Admin login (password)
+- Student registration (password and/or face)
+- Student login (via password OR via face photo)
+- Dashboards, Question bank, Exam
 
 Run:
 pip install -r requirements.txt
