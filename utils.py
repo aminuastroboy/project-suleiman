@@ -1,28 +1,29 @@
-
 import sqlite3
 from pathlib import Path
 import hashlib
 from PIL import Image, ImageOps
 import numpy as np
+from datetime import datetime
 
-DB_PATH = Path(__file__).parent / "cbt_extended.db"
+DB_PATH = Path(__file__).parent / "cbt_app.db"
 
 def get_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
-def hash_password(pw: str) -> str:
-    return hashlib.sha256(pw.encode()).hexdigest()
+# --- password helpers ---
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
 
-def verify_password(pw: str, pw_hash: str) -> bool:
-    if not pw_hash:
+def verify_password(password: str, password_hash: str) -> bool:
+    if not password_hash:
         return False
-    return hash_password(pw) == pw_hash
+    return hash_password(password) == password_hash
 
-def image_to_embedding(img: Image.Image, size=(64,64)) -> np.ndarray:
-    \"\"\"Convert PIL image to normalized float32 embedding (1D numpy array).\"\"\"
-    img = ImageOps.fit(img.convert('L'), size, method=Image.Resampling.LANCZOS)
+# --- image/embedding helpers ---
+def image_to_embedding(pil_image: Image.Image, size=(64,64)) -> np.ndarray:
+    img = ImageOps.fit(pil_image.convert('L'), size, method=Image.Resampling.LANCZOS)
     arr = np.asarray(img, dtype=np.float32) / 255.0
     emb = arr.flatten()
     norm = np.linalg.norm(emb) + 1e-8
@@ -44,19 +45,17 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     denom = (np.linalg.norm(a) * np.linalg.norm(b) + 1e-8)
     return float(np.dot(a, b) / denom)
 
-def compare_embeddings(emb: np.ndarray, stored_bytes: bytes, threshold: float = 0.85):
-    \"\"\"Return (match_bool, similarity_score).\"\"\"
+def compare_embeddings(emb: np.ndarray, stored_bytes: bytes, threshold: float = 0.84):
     if stored_bytes is None:
         return False, 0.0
     db_emb = bytes_to_embedding(stored_bytes)
     sim = cosine_similarity(emb, db_emb)
     return (sim >= threshold), float(sim)
 
-# ----- Database helpers -----
-def init_db(seed_admin: bool = True, seed_questions: bool = True):
-    conn = get_conn()
-    cur = conn.cursor()
-
+# --- DB initialization and helpers ---
+def init_db(seed=True):
+    conn = get_conn(); cur = conn.cursor()
+    # users table (admin + students)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,7 +67,7 @@ def init_db(seed_admin: bool = True, seed_questions: bool = True):
             face_embedding BLOB
         )
     ''')
-
+    # questions
     cur.execute('''
         CREATE TABLE IF NOT EXISTS questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,7 +82,7 @@ def init_db(seed_admin: bool = True, seed_questions: bool = True):
             difficulty TEXT
         )
     ''')
-
+    # attempts + answers
     cur.execute('''
         CREATE TABLE IF NOT EXISTS attempts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,7 +92,6 @@ def init_db(seed_admin: bool = True, seed_questions: bool = True):
             created_at TEXT
         )
     ''')
-
     cur.execute('''
         CREATE TABLE IF NOT EXISTS answers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,62 +101,77 @@ def init_db(seed_admin: bool = True, seed_questions: bool = True):
             is_correct INTEGER
         )
     ''')
-
     conn.commit()
 
-    if seed_admin:
-        cur.execute(\"SELECT COUNT(*) as c FROM users WHERE role='admin'\")
+    if seed:
+        # seed admin
+        cur.execute("SELECT COUNT(*) as c FROM users WHERE role='admin'")
         if cur.fetchone()['c'] == 0:
-            admin_pw = hash_password('1234')
-            cur.execute(\"INSERT INTO users (role, reg_no, name, email, password_hash, face_embedding) VALUES (?,?,?,?,?,?)\",
+            admin_pw = hash_password('admin123')
+            cur.execute("INSERT INTO users (role, reg_no, name, email, password_hash, face_embedding) VALUES (?,?,?,?,?,?)",
                         ('admin','ADMIN001','Administrator','admin@example.com', admin_pw, None))
             conn.commit()
-
-    if seed_questions:
-        cur.execute('SELECT COUNT(*) as c FROM questions')
+        # seed students
+        cur.execute("SELECT COUNT(*) as c FROM users WHERE role='student'")
         if cur.fetchone()['c'] == 0:
-            sample = [
-                ('Math Q1','What is 2+2?','1','2','3','4','D','Math','Easy'),
-                ('Math Q2','What is 5*6?','11','30','20','25','B','Math','Easy'),
-                ('Eng Q1','Choose synonym of happy','sad','joyful','angry','tired','B','English','Easy'),
-            ]
-            for s in sample:
-                cur.execute(\"INSERT INTO questions (title,body,choice_a,choice_b,choice_c,choice_d,correct_choice,subject,difficulty) VALUES (?,?,?,?,?,?,?,?,?)\", s)
+            # two sample students with no face (passwords set)
+            s1 = ('student','STU001','Alice','alice@example.com', hash_password('pass123'), None)
+            s2 = ('student','STU002','Bob','bob@example.com', hash_password('pass123'), None)
+            cur.execute("INSERT INTO users (role, reg_no, name, email, password_hash, face_embedding) VALUES (?,?,?,?,?,?)", s1)
+            cur.execute("INSERT INTO users (role, reg_no, name, email, password_hash, face_embedding) VALUES (?,?,?,?,?,?)", s2)
             conn.commit()
-
+        # seed questions if empty
+        cur.execute("SELECT COUNT(*) as c FROM questions")
+        if cur.fetchone()['c'] == 0:
+            qs = [
+                ('Math Q1','What is 2 + 2?','1','2','3','4','D','Math','Easy'),
+                ('AI Q1','Which language is most used for AI?','Java','C++','Python','Ruby','C','AI','Easy'),
+                ('Geo Q1','Capital of Nigeria?','Lagos','Kano','Abuja','Port Harcourt','C','Geography','Easy')
+            ]
+            for q in qs:
+                cur.execute("INSERT INTO questions (title,body,choice_a,choice_b,choice_c,choice_d,correct_choice,subject,difficulty) VALUES (?,?,?,?,?,?,?,?,?)", q)
+            conn.commit()
     conn.close()
 
-def add_student(reg_no: str, name: str, email: str, password_hash: str = None, face_bytes: bytes = None) -> bool:
-    \"\"\"Insert a new student. Returns True on success, False on failure (e.g. reg_no exists).\"\"\"
+def reset_db():
+    # drop tables and re-init
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute('DROP TABLE IF EXISTS answers')
+    cur.execute('DROP TABLE IF EXISTS attempts')
+    cur.execute('DROP TABLE IF EXISTS questions')
+    cur.execute('DROP TABLE IF EXISTS users')
+    conn.commit(); conn.close()
+    init_db(seed=True)
+
+# user helpers
+def add_student(reg_no, name, email, password_hash=None, face_bytes=None):
     conn = get_conn(); cur = conn.cursor()
     try:
-        cur.execute(\"INSERT INTO users (role, reg_no, name, email, password_hash, face_embedding) VALUES (?,?,?,?,?,?)\",
+        cur.execute("INSERT INTO users (role, reg_no, name, email, password_hash, face_embedding) VALUES (?,?,?,?,?,?)",
                     ('student', reg_no, name, email, password_hash, face_bytes))
-        conn.commit()
-        return True
+        conn.commit(); return True
     except Exception as e:
-        # Optionally log e somewhere in real app
         return False
     finally:
         conn.close()
 
-def get_user_by_reg(reg_no: str):
+def get_user_by_reg(reg_no):
     conn = get_conn(); cur = conn.cursor()
-    cur.execute(\"SELECT * FROM users WHERE reg_no=?\", (reg_no,))
+    cur.execute("SELECT * FROM users WHERE reg_no=?", (reg_no,))
     row = cur.fetchone(); conn.close(); return row
 
 def list_students():
     conn = get_conn(); cur = conn.cursor()
-    cur.execute(\"SELECT * FROM users WHERE role='student'\")
+    cur.execute("SELECT * FROM users WHERE role='student'")
     rows = cur.fetchall(); conn.close(); return rows
 
 def list_questions():
     conn = get_conn(); cur = conn.cursor()
-    cur.execute(\"SELECT * FROM questions\")
+    cur.execute("SELECT * FROM questions")
     rows = cur.fetchall(); conn.close(); return rows
 
-def add_question(title: str, body: str, a: str, b: str, c: str, d: str, correct_choice: str, subject: str = 'General', difficulty: str = 'Medium'):
+def add_question(title, body, a,b,c,d, correct_choice, subject='General', difficulty='Medium'):
     conn = get_conn(); cur = conn.cursor()
-    cur.execute(\"INSERT INTO questions (title, body, choice_a, choice_b, choice_c, choice_d, correct_choice, subject, difficulty) VALUES (?,?,?,?,?,?,?,?,?)\",
-                (title, body, a, b, c, d, correct_choice, subject, difficulty))
+    cur.execute("INSERT INTO questions (title,body,choice_a,choice_b,choice_c,choice_d,correct_choice,subject,difficulty) VALUES (?,?,?,?,?,?,?,?,?)",
+                (title, body, a,b,c,d, correct_choice, subject, difficulty))
     conn.commit(); conn.close()
