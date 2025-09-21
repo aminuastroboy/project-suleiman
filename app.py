@@ -1,13 +1,12 @@
 
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageOps
 import numpy as np
-import mediapipe as mp
-import pickle, os
+import os, pickle, math
 
-DB_FILE = "students_mp.pkl"
+DB_FILE = "students_simple.pkl"
 
-# Load or initialize DB
+# Load or initialize DB (keep dummy data)
 if os.path.exists(DB_FILE):
     with open(DB_FILE, "rb") as f:
         DB = pickle.load(f)
@@ -23,70 +22,57 @@ def save_db():
     with open(DB_FILE, "wb") as f:
         pickle.dump(DB, f)
 
-mp_face = mp.solutions.face_mesh
-
-def get_embedding_from_image(pil_image):
-    # Returns 1D numpy array embedding from mediapipe face landmarks or None
-    img = np.asarray(pil_image.convert("RGB"))
-    h, w, _ = img.shape
-    with mp_face.FaceMesh(static_image_mode=True, max_num_faces=1, refine_landmarks=False) as face_mesh:
-        results = face_mesh.process(img)
-        if not results.multi_face_landmarks:
-            return None
-        lm = results.multi_face_landmarks[0].landmark
-        coords = np.array([[p.x * w, p.y * h, p.z * w] for p in lm], dtype=np.float32)  # shape (468,3)
-        # Normalize: subtract center and scale by face size (max dist)
-        center = coords.mean(axis=0)
-        coords_centered = coords - center
-        scale = np.max(np.linalg.norm(coords_centered, axis=1))
-        if scale > 0:
-            coords_centered /= scale
-        embedding = coords_centered.flatten()  # length 468*3 = 1404
-        return embedding
+def image_to_embedding(pil_image, size=(64,64)):
+    # Convert to grayscale, resize, normalize and flatten
+    img = pil_image.convert("L")  # grayscale
+    img = ImageOps.fit(img, size, Image.ANTIALIAS)
+    arr = np.asarray(img, dtype=np.float32) / 255.0
+    emb = arr.flatten()
+    # Normalize to unit vector
+    norm = np.linalg.norm(emb)
+    if norm > 0:
+        emb = emb / norm
+    return emb
 
 def cosine_similarity(a, b):
-    if a is None or b is None:
-        return -1.0
     a = np.array(a, dtype=np.float32)
     b = np.array(b, dtype=np.float32)
     if a.size == 0 or b.size == 0:
         return -1.0
-    dot = np.dot(a, b)
-    na = np.linalg.norm(a)
-    nb = np.linalg.norm(b)
-    if na == 0 or nb == 0:
-        return -1.0
-    return float(dot / (na * nb))
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-st.set_page_config(page_title="CBT App v4 (Mediapipe)", layout="wide")
-st.title("🧠 Project Suleiman — CBT App v4 (Mediapipe embeddings)")
+st.set_page_config(page_title="CBT App v5 (Simple Embeddings)", layout="wide")
+st.title("🧠 Project Suleiman — CBT App v5 (No OpenCV)")
 
 mode = st.sidebar.radio("Mode", ["Student", "Admin"])
 
 if mode == "Student":
     st.header("Student Portal")
     action = st.sidebar.radio("Action", ["Register", "Login", "Lessons", "Progress"])
+
     if action == "Register":
-        st.subheader("Register with School ID + Face")
+        st.subheader("Register with School ID + Face (simple)")
         school_id = st.text_input("School ID")
         name = st.text_input("Full name")
-        img_file = st.camera_input("Take a photo for registration (allow camera)")
+        img_file = st.camera_input("Take a close-up face photo (fill the frame)")
         if st.button("Register"):
             if not school_id or not name or img_file is None:
                 st.warning("Provide School ID, name and take a photo.")
             else:
                 pil = Image.open(img_file)
-                emb = get_embedding_from_image(pil)
+                emb = image_to_embedding(pil)
                 if emb is None:
-                    st.error("No face detected. Try again with a clearer photo.")
+                    st.error("Could not process image. Try again.")
                 else:
                     DB["students"][school_id] = {"name": name, "embedding": emb.tolist(), "progress": []}
                     save_db()
                     st.success(f"Registered {name} ({school_id}) successfully.")
+                    st.info("Note: This is a simple image-based matcher for demo purposes. For production, use a proper biometric model.")
+
     elif action == "Login":
-        st.subheader("Login with School ID + Face")
+        st.subheader("Login with School ID + Face (simple)")
         school_id = st.text_input("School ID to login")
-        img_file = st.camera_input("Take a photo for login (allow camera)")
+        img_file = st.camera_input("Take a close-up face photo for login")
         if st.button("Login"):
             if not school_id or img_file is None:
                 st.warning("Provide School ID and take a photo.")
@@ -95,21 +81,22 @@ if mode == "Student":
                     st.error("School ID not found. Please register first.")
                 else:
                     pil = Image.open(img_file)
-                    emb = get_embedding_from_image(pil)
+                    emb = image_to_embedding(pil)
                     if emb is None:
-                        st.error("No face detected. Try again.")
+                        st.error("Could not process image. Try again.")
                     else:
                         stored = DB["students"][school_id].get("embedding")
                         if stored is None:
                             st.error("No face registered for this School ID. Please register first.")
                         else:
                             sim = cosine_similarity(np.array(stored), emb)
-                            # similarity near 1.0 => match. threshold can be tuned
-                            if sim >= 0.7:
+                            # threshold tuned for normalized grayscale embeddings
+                            if sim >= 0.90:
                                 st.success(f"Welcome back, {DB['students'][school_id]['name']}! (similarity={sim:.3f})")
                                 st.session_state["logged_in"] = school_id
                             else:
                                 st.error(f"Face did not match (similarity={sim:.3f}). Access denied.")
+
     elif action == "Lessons":
         if "logged_in" not in st.session_state:
             st.info("Login first to access lessons.")
@@ -121,6 +108,7 @@ if mode == "Student":
                 DB["students"][sid]["progress"].append({"lesson": "Lesson 1", "answer": ans})
                 save_db()
                 st.success("Progress saved.")
+
     elif action == "Progress":
         if "logged_in" not in st.session_state:
             st.info("Login first to view progress.")
