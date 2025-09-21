@@ -6,17 +6,23 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 def verify_password(password: str, password_hash: str) -> bool:
+    if password_hash is None: return False
     return hash_password(password) == password_hash
 
 def image_to_embedding(img: Image.Image) -> list:
     # convert to 64x64 grayscale flattened vector
     img = ImageOps.fit(img, (64,64)).convert('L')
     arr = np.array(img).astype('float32') / 255.0
-    return arr.flatten().tolist()
+    # flatten and normalize
+    emb = arr.flatten().tolist()
+    norm = np.linalg.norm(np.array(emb)) + 1e-8
+    emb = (np.array(emb) / norm).tolist()
+    return emb
 
 def cosine_similarity(a, b):
     a, b = np.array(a), np.array(b)
-    return float(np.dot(a,b)/(np.linalg.norm(a)*np.linalg.norm(b)+1e-8))
+    denom = (np.linalg.norm(a)*np.linalg.norm(b)+1e-8)
+    return float(np.dot(a,b)/denom)
 
 def get_user_by_reg(reg_no):
     conn = get_conn(); cur = conn.cursor()
@@ -54,3 +60,14 @@ def add_question(title, body, a,b,c,d,correct,subject,difficulty):
     cur.execute('INSERT INTO questions (title,body,choice_a,choice_b,choice_c,choice_d,correct_choice,subject,difficulty) VALUES (?,?,?,?,?,?,?,?,?)',
                 (title,body,a,b,c,d,correct,subject,difficulty))
     conn.commit(); conn.close(); return True
+
+def record_attempt(user_id, score, total):
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute('INSERT INTO attempts (user_id, score, total, created_at) VALUES (?,?,?,datetime("now"))', (user_id, score, total))
+    attempt_id = cur.lastrowid
+    conn.commit(); conn.close(); return attempt_id
+
+def record_answer(attempt_id, question_id, selected_choice, is_correct):
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute('INSERT INTO answers (attempt_id, question_id, selected_choice, is_correct) VALUES (?,?,?,?)', (attempt_id, question_id, selected_choice, int(is_correct)))
+    conn.commit(); conn.close()

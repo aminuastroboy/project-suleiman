@@ -1,4 +1,4 @@
-import sqlite3, json
+import sqlite3, hashlib
 from pathlib import Path
 DB_PATH = Path(__file__).parent / "cbt_full.db"
 
@@ -54,12 +54,25 @@ def init_db():
         )
     ''')
     conn.commit()
-    # seed admin
+    # seed admin if missing
     cur.execute("SELECT COUNT(*) as c FROM users WHERE role='admin'")
     if cur.fetchone()['c'] == 0:
-        import hashlib
         h = hashlib.sha256('1234'.encode()).hexdigest()
-        cur.execute("INSERT INTO users (reg_no,name,email,password_hash,role,face_embedding) VALUES (?,?,?,?,?,?)", 
-                    ('ADMIN001','Administrator','admin@example.com',h,'admin',None))
+        cur.execute("INSERT INTO users (reg_no,name,email,password_hash,role,face_embedding) VALUES (?,?,?,?,?,?)",
+                    ('ADMIN001','Administrator','admin@example.com',h,'admin', None))
+        conn.commit()
+    # seed sample questions if missing
+    cur.execute('SELECT COUNT(*) as c FROM questions')
+    if cur.fetchone()['c'] == 0:
+        qs = [
+            ('Math Q1','What is 2+2?','1','2','3','4','D','Math','Easy'),
+            ('Math Q2','What is 5*6?','11','30','20','25','B','Math','Easy'),
+            ('Eng Q1','Choose synonym of happy','sad','joyful','angry','tired','B','English','Easy')
+        ]
+        for q in qs:
+            cur.execute("INSERT INTO questions (title,body,choice_a,choice_b,choice_c,choice_d,correct_choice,subject,difficulty) VALUES (?,?,?,?,?,?,?,?,?)", q)
         conn.commit()
     conn.close()
+
+if __name__ == '__main__':
+    init_db()
