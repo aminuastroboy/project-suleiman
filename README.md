@@ -1,9 +1,8 @@
-CBT Hybrid Biometric Project
-Features:
-- Admin login (password)
-- Student registration (password and/or face)
-- Student login (via password OR via face photo)
-- Dashboards, Question bank, Exam
+CBT Biometric v4 - Single App with redirects
+- Live camera capture for registration, login and re-auth (st.camera_input)
+- Hybrid login: password OR face
+- Redirect-style navigation using st.session_state['page']
+- Per-question exam flow, re-auth required before exam
 
 Run:
 pip install -r requirements.txt

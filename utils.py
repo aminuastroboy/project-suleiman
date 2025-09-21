@@ -10,13 +10,12 @@ def verify_password(password: str, password_hash: str) -> bool:
     return hash_password(password) == password_hash
 
 def image_to_embedding(img: Image.Image) -> list:
-    # convert to 64x64 grayscale flattened vector
+    # convert to 64x64 grayscale flattened vector and normalize
     img = ImageOps.fit(img, (64,64)).convert('L')
     arr = np.array(img).astype('float32') / 255.0
-    # flatten and normalize
-    emb = arr.flatten().tolist()
-    norm = np.linalg.norm(np.array(emb)) + 1e-8
-    emb = (np.array(emb) / norm).tolist()
+    emb = arr.flatten()
+    norm = np.linalg.norm(emb) + 1e-8
+    emb = (emb / norm).tolist()
     return emb
 
 def cosine_similarity(a, b):
