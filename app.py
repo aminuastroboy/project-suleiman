@@ -1,140 +1,159 @@
-
 import streamlit as st
-from PIL import Image, ImageOps
-import numpy as np
-import os, pickle, math
+from db import init_db, get_conn
+import utils, sqlite3, datetime
 
-DB_FILE = "students_simple.pkl"
+init_db()
+st.set_page_config(page_title='CBT System - Project Suleiman', layout='wide')
+st.title('CBT System - Project Suleiman')
 
-# Load or initialize DB (keep dummy data)
-if os.path.exists(DB_FILE):
-    with open(DB_FILE, "rb") as f:
-        DB = pickle.load(f)
-else:
-    DB = {"admin": {"username": "admin", "password": "1234"}, "students": {}}
-    # Seed dummy students (no embeddings yet)
-    DB["students"]["S1001"] = {"name": "Student One", "embedding": None, "progress": [{"lesson": "Lesson 1", "answer": "Negative: I can't do this → Positive: I'll try step by step"}]}
-    DB["students"]["S1002"] = {"name": "Student Two", "embedding": None, "progress": [{"lesson": "Lesson 1", "answer": "Negative: Nobody likes me → Positive: I have people who care"}]}
-    with open(DB_FILE, "wb") as f:
-        pickle.dump(DB, f)
+menu = st.sidebar.selectbox('Go to', ['Home','Admin Login','Admin Dashboard','Student Registration','Student Login','Student Dashboard','Question Bank','Exam (Student)'])
 
-def save_db():
-    with open(DB_FILE, "wb") as f:
-        pickle.dump(DB, f)
+# Home
+if menu == 'Home':
+    st.header('Welcome')
+    st.write('This is the CBT system. Use the sidebar to navigate.')
 
-def image_to_embedding(pil_image, size=(64,64)):
-    # Convert to grayscale, resize, normalize and flatten
-    img = pil_image.convert("L")  # grayscale
-    img = ImageOps.fit(img, size, Image.Resampling.LANCZOS)
-    arr = np.asarray(img, dtype=np.float32) / 255.0
-    emb = arr.flatten()
-    # Normalize to unit vector
-    norm = np.linalg.norm(emb)
-    if norm > 0:
-        emb = emb / norm
-    return emb
-
-def cosine_similarity(a, b):
-    a = np.array(a, dtype=np.float32)
-    b = np.array(b, dtype=np.float32)
-    if a.size == 0 or b.size == 0:
-        return -1.0
-    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
-
-st.set_page_config(page_title="CBT App v5 (Simple Embeddings, Fixed)", layout="wide")
-st.title("🧠 Project Suleiman — CBT App v5 (No OpenCV, Fixed Pillow)")
-
-mode = st.sidebar.radio("Mode", ["Student", "Admin"])
-
-if mode == "Student":
-    st.header("Student Portal")
-    action = st.sidebar.radio("Action", ["Register", "Login", "Lessons", "Progress"])
-
-    if action == "Register":
-        st.subheader("Register with School ID + Face (simple)")
-        school_id = st.text_input("School ID")
-        name = st.text_input("Full name")
-        img_file = st.camera_input("Take a close-up face photo (fill the frame)")
-        if st.button("Register"):
-            if not school_id or not name or img_file is None:
-                st.warning("Provide School ID, name and take a photo.")
-            else:
-                pil = Image.open(img_file)
-                emb = image_to_embedding(pil)
-                if emb is None:
-                    st.error("Could not process image. Try again.")
-                else:
-                    DB["students"][school_id] = {"name": name, "embedding": emb.tolist(), "progress": []}
-                    save_db()
-                    st.success(f"Registered {name} ({school_id}) successfully.")
-                    st.info("Note: This is a simple image-based matcher for demo purposes. For production, use a proper biometric model.")
-
-    elif action == "Login":
-        st.subheader("Login with School ID + Face (simple)")
-        school_id = st.text_input("School ID to login")
-        img_file = st.camera_input("Take a close-up face photo for login")
-        if st.button("Login"):
-            if not school_id or img_file is None:
-                st.warning("Provide School ID and take a photo.")
-            else:
-                if school_id not in DB["students"]:
-                    st.error("School ID not found. Please register first.")
-                else:
-                    pil = Image.open(img_file)
-                    emb = image_to_embedding(pil)
-                    if emb is None:
-                        st.error("Could not process image. Try again.")
-                    else:
-                        stored = DB["students"][school_id].get("embedding")
-                        if stored is None:
-                            st.error("No face registered for this School ID. Please register first.")
-                        else:
-                            sim = cosine_similarity(np.array(stored), emb)
-                            # threshold tuned for normalized grayscale embeddings
-                            if sim >= 0.90:
-                                st.success(f"Welcome back, {DB['students'][school_id]['name']}! (similarity={sim:.3f})")
-                                st.session_state["logged_in"] = school_id
-                            else:
-                                st.error(f"Face did not match (similarity={sim:.3f}). Access denied.")
-
-    elif action == "Lessons":
-        if "logged_in" not in st.session_state:
-            st.info("Login first to access lessons.")
+# Admin Login
+if menu == 'Admin Login':
+    st.header('Admin Login')
+    reg = st.text_input('Admin Reg No (use ADMIN001)')
+    pwd = st.text_input('Password', type='password')
+    if st.button('Login'):
+        row = utils.get_user_by_reg(reg)
+        if row and row['role']=='admin' and utils.verify_password(pwd, row['password_hash']):
+            st.session_state['admin_logged'] = row['id']
+            st.success('Admin logged in')
         else:
-            st.subheader("Lesson 1: Challenging Negative Thoughts")
-            ans = st.text_area("Write a negative thought and reframe it positively:")
-            if st.button("Save Answer"):
-                sid = st.session_state["logged_in"]
-                DB["students"][sid]["progress"].append({"lesson": "Lesson 1", "answer": ans})
-                save_db()
-                st.success("Progress saved.")
+            st.error('Invalid credentials')
 
-    elif action == "Progress":
-        if "logged_in" not in st.session_state:
-            st.info("Login first to view progress.")
-        else:
-            sid = st.session_state["logged_in"]
-            st.subheader(f"Progress for {DB['students'][sid]['name']} ({sid})")
-            for p in DB["students"][sid].get("progress", []):
-                st.write(f"- {p['lesson']}: {p['answer']}")
-
-elif mode == "Admin":
-    st.header("Admin Panel")
-    username = st.text_input("Admin username")
-    password = st.text_input("Admin password", type="password")
-    if st.button("Login as Admin"):
-        if username == DB["admin"]["username"] and password == DB["admin"]["password"]:
-            st.success("Admin logged in.")
-            st.subheader("Registered students")
-            for sid, info in DB["students"].items():
-                emb_status = "Yes" if info.get("embedding") is not None else "No"
-                st.write(f"- {sid}: {info.get('name')} (Embedding registered: {emb_status})")
-                st.write("  Progress:")
-                for p in info.get("progress", []):
-                    st.write(f"    • {p['lesson']}: {p['answer']}")
-                if st.button(f"Delete {sid}"):
-                    del DB["students"][sid]
-                    save_db()
+# Admin Dashboard
+if menu == 'Admin Dashboard':
+    if 'admin_logged' not in st.session_state:
+        st.warning('Please login as admin first (Admin Login)')
+    else:
+        st.header('Admin Dashboard')
+        students = utils.list_students()
+        questions = utils.list_questions()
+        st.subheader('Overview')
+        st.write(f'Total students: {len(students)}')
+        st.write(f'Total questions: {len(questions)}')
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader('Manage Students')
+            for s in students:
+                st.write(f"{s['reg_no']} - {s['name']} - {s['email']}")
+                if st.button('Delete '+s['reg_no']):
+                    conn = get_conn()
+                    cur = conn.cursor()
+                    cur.execute('DELETE FROM users WHERE id=?',(s['id'],))
+                    conn.commit()
+                    conn.close()
                     st.experimental_rerun()
+        with col2:
+            st.subheader('Manage Questions')
+            for q in questions:
+                st.write(f"{q['id']}: {q['title']} ({q['subject']})")
+                if st.button('Delete Q'+str(q['id'])):
+                    conn = get_conn()
+                    cur = conn.cursor()
+                    cur.execute('DELETE FROM questions WHERE id=?',(q['id'],))
+                    conn.commit()
+                    conn.close()
+                    st.experimental_rerun()
+
+# Student Registration
+if menu == 'Student Registration':
+    st.header('Register Student')
+    reg_no = st.text_input('Registration Number')
+    name = st.text_input('Full name')
+    email = st.text_input('Email')
+    pwd = st.text_input('Password', type='password')
+    if st.button('Register'):
+        ok = utils.add_student(reg_no, name, email, pwd)
+        if ok:
+            st.success('Student registered')
         else:
-            st.error("Invalid admin credentials. Default admin is admin / 1234")
+            st.error('Registration failed (maybe reg no exists)')
+
+# Student Login
+if menu == 'Student Login':
+    st.header('Student Login')
+    reg = st.text_input('Registration Number')
+    pwd = st.text_input('Password', type='password')
+    if st.button('Login'):
+        row = utils.get_user_by_reg(reg)
+        if row and row['role']=='student' and utils.verify_password(pwd, row['password_hash']):
+            st.session_state['student_logged'] = row['id']
+            st.success('Student logged in')
+        else:
+            st.error('Invalid credentials')
+
+# Student Dashboard
+if menu == 'Student Dashboard':
+    if 'student_logged' not in st.session_state:
+        st.warning('Please login as student first (Student Login)')
+    else:
+        st.header('Student Dashboard')
+        uid = st.session_state['student_logged']
+        user = utils.get_user_by_id(uid)
+        st.write(f"Name: {user['name']}")
+        st.write(f"Reg No: {user['reg_no']}")
+        # show past attempts
+        conn = get_conn(); cur = conn.cursor()
+        cur.execute('SELECT * FROM attempts WHERE user_id=? ORDER BY id DESC',(uid,))
+        rows = cur.fetchall()
+        st.subheader('Past Attempts')
+        for r in rows:
+            st.write(f"{r['created_at']}: {r['score']}/{r['total']}")
+        conn.close()
+
+# Question Bank (Admin can add questions here; but accessible to all for demo)
+if menu == 'Question Bank':
+    st.header('Question Bank')
+    st.subheader('Add Question')
+    title = st.text_input('Title')
+    body = st.text_area('Question body')
+    a = st.text_input('Choice A'); b = st.text_input('Choice B'); c = st.text_input('Choice C'); d = st.text_input('Choice D')
+    correct = st.selectbox('Correct choice', ['A','B','C','D'])
+    subject = st.text_input('Subject'); difficulty = st.selectbox('Difficulty', ['Easy','Medium','Hard'])
+    if st.button('Add Question'):
+        utils.add_question(title, body, a,b,c,d,correct,subject,difficulty)
+        st.success('Question added')
+    st.subheader('Existing Questions')
+    qs = utils.list_questions()
+    for q in qs:
+        st.write(f"{q['id']}: {q['title']} - {q['subject']} - {q['difficulty']}")
+        st.write(f"A. {q['choice_a']}  B. {q['choice_b']}  C. {q['choice_c']}  D. {q['choice_d']}")
+
+# Exam (Student) - take test
+if menu == 'Exam (Student)':
+    st.header('Take Exam')
+    if 'student_logged' not in st.session_state:
+        st.warning('Please login as student first (Student Login)')
+    else:
+        uid = st.session_state['student_logged']
+        conn = get_conn(); cur = conn.cursor()
+        cur.execute('SELECT * FROM questions')
+        qs = cur.fetchall()
+        if not qs:
+            st.info('No questions in bank yet')
+        else:
+            # simple all-at-once interface
+            answers = {}
+            for q in qs:
+                st.write(f"Q{q['id']}: {q['body']}")
+                ans = st.radio(f"Select for Q{q['id']}", ['A','B','C','D'], key=f"q{q['id']}")
+                answers[q['id']] = ans
+            if st.button('Submit Exam'):
+                score = 0; total = len(qs)
+                cur.execute('INSERT INTO attempts (user_id, score, total, created_at) VALUES (?,?,?,?)', (uid,0,total,str(datetime.datetime.now())))
+                attempt_id = cur.lastrowid
+                for q in qs:
+                    sel = answers[q['id']]
+                    correct = 1 if sel == q['correct_choice'] else 0
+                    if correct: score += 1
+                    cur.execute('INSERT INTO answers (attempt_id, question_id, selected_choice, is_correct) VALUES (?,?,?,?)', (attempt_id, q['id'], sel, correct))
+                cur.execute('UPDATE attempts SET score=? WHERE id=?', (score, attempt_id))
+                conn.commit()
+                st.success(f'Exam submitted. Score: {score}/{total}')
+        conn.close()

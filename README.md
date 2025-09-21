@@ -1,14 +1,13 @@
-# CBT App v5 (Fixed Pillow)
+CBT Full Project - Project Suleiman
+Features:
+1. Admin Login
+2. Admin Dashboard
+3. Student Registration Form
+4. Question Bank
+5. Student Login
+6. Student Dashboard
+7. Questions Interface (Exam)
 
-This fixes the deprecated Image.ANTIALIAS by using Image.Resampling.LANCZOS.
-No OpenCV or mediapipe required. Pure Python + Streamlit + Pillow + NumPy.
-
-## Features
-- Student register/login via grayscale embeddings
-- Lesson 1 and progress saving
-- Admin panel (admin / 1234)
-- Dummy students seeded
-
-## Run
+Run:
 pip install -r requirements.txt
 streamlit run app.py

@@ -1,45 +1,91 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text
-from sqlalchemy.orm import sessionmaker, declarative_base
+import sqlite3
+from pathlib import Path
+DB_PATH = Path(__file__).parent / "cbt_full.db"
 
-Base = declarative_base()
-engine = create_engine("sqlite:///cbt.db")
-SessionLocal = sessionmaker(bind=engine)
-
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    school_id = Column(String(50), unique=True, nullable=False)
-    face_embedding = Column(Text, nullable=False)
-
-class Progress(Base):
-    __tablename__ = "progress"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer)
-    lesson = Column(String(100))
-    answer = Column(Text)
-
-class Admin(Base):
-    __tablename__ = "admins"
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, nullable=False)
-    password = Column(String(100), nullable=False)
+def get_conn():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
-    session = SessionLocal()
-    # Seed default admin
-    if session.query(Admin).count() == 0:
-        default_admin = Admin(username="admin", password="1234")
-        session.add(default_admin)
-        session.commit()
-    # Seed dummy students & progress (face_embedding stored as empty array string)
-    if session.query(User).count() == 0:
-        u1 = User(school_id="S1001", face_embedding="[]")
-        u2 = User(school_id="S1002", face_embedding="[]")
-        session.add_all([u1, u2])
-        session.commit()
-        p1 = Progress(user_id=u1.id, lesson="Lesson 1", answer="Negative: I can't do this → Positive: I'll try step by step")
-        p2 = Progress(user_id=u2.id, lesson="Lesson 1", answer="Negative: Nobody likes me → Positive: I have people who care")
-        session.add_all([p1, p2])
-        session.commit()
-    session.close()
+    conn = get_conn()
+    cur = conn.cursor()
+    # users: admin and students (students have role='student')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reg_no TEXT UNIQUE,
+            name TEXT,
+            email TEXT,
+            password_hash TEXT,
+            role TEXT -- 'admin' or 'student'
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            body TEXT,
+            choice_a TEXT,
+            choice_b TEXT,
+            choice_c TEXT,
+            choice_d TEXT,
+            correct_choice TEXT,
+            subject TEXT,
+            difficulty TEXT
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            score INTEGER,
+            total INTEGER,
+            created_at TEXT
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS answers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            attempt_id INTEGER,
+            question_id INTEGER,
+            selected_choice TEXT,
+            is_correct INTEGER
+        )
+    ''')
+    conn.commit()
+    # seed admin if not exists
+    cur.execute("SELECT COUNT(*) as c FROM users WHERE role='admin'")
+    if cur.fetchone()['c'] == 0:
+        # password is '1234' hashed with sha256
+        import hashlib
+        h = hashlib.sha256('1234'.encode()).hexdigest()
+        cur.execute("INSERT INTO users (reg_no, name, email, password_hash, role) VALUES (?,?,?,?,?)", ('ADMIN001','Administrator','admin@example.com', h, 'admin'))
+        conn.commit()
+    # seed sample students
+    cur.execute("SELECT COUNT(*) as c FROM users WHERE role='student'")
+    if cur.fetchone()['c'] == 0:
+        import hashlib, random
+        sps = [
+            ('S1001','Student One','s1001@example.com','pass1'),
+            ('S1002','Student Two','s1002@example.com','pass2')
+        ]
+        for reg,name,email,pw in sps:
+            h = hashlib.sha256(pw.encode()).hexdigest()
+            cur.execute("INSERT OR IGNORE INTO users (reg_no,name,email,password_hash,role) VALUES (?,?,?,?,?)", (reg,name,email,h,'student'))
+        conn.commit()
+    # seed question bank
+    cur.execute('SELECT COUNT(*) as c FROM questions')
+    if cur.fetchone()['c'] == 0:
+        qs = [
+            ('Math Q1','What is 2+2?','1','2','3','4','D','Math','Easy'),
+            ('Math Q2','What is 5*6?','11','30','20','25','B','Math','Easy'),
+            ('Eng Q1','Choose synonym of happy','sad','joyful','angry','tired','B','English','Easy')
+        ]
+        for q in qs:
+            cur.execute("INSERT INTO questions (title,body,choice_a,choice_b,choice_c,choice_d,correct_choice,subject,difficulty) VALUES (?,?,?,?,?,?,?,?,?)", q)
+        conn.commit()
+    conn.close()
+
+if __name__ == '__main__':
+    init_db()
