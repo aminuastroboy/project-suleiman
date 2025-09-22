@@ -1,3 +1,7 @@
-# CBT Project - Hybrid Biometric
+CBT Project - Hybrid Biometric (with camera support)
 
-See instructions in README provided earlier.
+Run:
+pip install -r requirements.txt
+streamlit run app.py
+
+Default admin: ADMIN001 / 1234
